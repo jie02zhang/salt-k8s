@@ -52,40 +52,38 @@
 1.1 设置主机名！！！
 ```
 [root@linux-node1 ~]# cat /etc/hostname 
-linux-node1.example.com
-
+linux-node1
 [root@linux-node2 ~]# cat /etc/hostname 
-linux-node2.example.com
-
+linux-node2
 [root@linux-node3 ~]# cat /etc/hostname 
-linux-node3.example.com
+linux-node3
+
+hostnamectl set-hostname linux-node1
 
 ```
 1.2 设置/etc/hosts保证主机名能够解析
 ```
-[root@linux-node1 ~]# cat /etc/hosts
-127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
-::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
-192.168.56.11 linux-node1 linux-node1.example.com
-192.168.56.12 linux-node2 linux-node2.example.com
-192.168.56.13 linux-node3 linux-node3.example.com
+cat >> /etc/hosts << EOF
+192.168.60.146 linux-node1
+192.168.60.89 linux-node2
+192.168.60.55 linux-node3
+EOF
 
 ```
 1.3 关闭SELinux和防火墙
 ```
-[root@linux-node1 ~]# vim /etc/sysconfig/selinux
-SELINUX=disabled #修改为disabled
-```
+#关闭Selinux
+sed -i 's/SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
+setenforce 0
+systemctl stop firewalld
+systemctl disable firewalld
 
-1.4 关闭NetworkManager和防火墙开启自启动
-```
-[root@linux-node1 ~]# systemctl disable firewalld
-[root@linux-node1 ~]# systemctl disable NetworkManager
 ```
 
 1.5 优化内核参数
 
    ```bash
+   cat >> /etc/sysctl.conf << EOF
    # For more information, see sysctl.conf(5) and sysctl.d(5).
    net.ipv6.conf.all.disable_ipv6 = 1
    net.ipv6.conf.default.disable_ipv6 = 1
@@ -116,6 +114,10 @@ SELINUX=disabled #修改为disabled
    net.bridge.bridge-nf-call-ip6tables = 1
    net.bridge.bridge-nf-call-iptables = 1
    net.bridge.bridge-nf-call-arptables = 1
+   EOF
+   sysctl -p
+   
+   modprobe br_netfilter
    
    ```
 
@@ -176,7 +178,7 @@ drwxr-xr-x. 3 root root  17 Jun  3 19:12 k8s-v1.10.3
 ```
 [root@linux-node1 ~]# vim /etc/salt/roster 
 linux-node1:
-  host: 192.168.56.11
+  host: 192.168.60.146
   user: root
   priv: /root/.ssh/id_rsa
   minion_opts:
@@ -186,7 +188,7 @@ linux-node1:
       etcd-name: etcd-node1
 
 linux-node2:
-  host: 192.168.56.12
+  host: 192.168.60.89
   user: root
   priv: /root/.ssh/id_rsa
   minion_opts:
@@ -196,7 +198,7 @@ linux-node2:
       etcd-name: etcd-node2
 
 linux-node3:
-  host: 192.168.56.13
+  host: 192.168.60.55
   user: root
   priv: /root/.ssh/id_rsa
   minion_opts:
@@ -210,13 +212,13 @@ linux-node3:
 ```
 [root@linux-node1 ~]# vim /srv/pillar/k8s.sls
 #设置Master的IP地址(必须修改)
-MASTER_IP: "192.168.56.11"
+MASTER_IP: "192.168.60.146"
 
 #设置ETCD集群访问地址（必须修改）
-ETCD_ENDPOINTS: "https://192.168.56.11:2379,https://192.168.56.12:2379,https://192.168.56.13:2379"
+ETCD_ENDPOINTS: "https://192.168.60.146:2379,https://192.168.60.89:2379,https://192.168.60.55:2379"
 
 #设置ETCD集群初始化列表（必须修改）
-ETCD_CLUSTER: "etcd-node1=https://192.168.56.11:2380,etcd-node2=https://192.168.56.12:2380,etcd-node3=https://192.168.56.13:2380"
+ETCD_CLUSTER: "etcd-node1=https://192.168.60.146:2380,etcd-node2=https://192.168.60.89:2380,etcd-node3=https://192.168.60.55:2380"
 
 #通过Grains FQDN自动获取本机IP地址，请注意保证主机名解析到本机IP地址
 NODE_IP: {{ grains['fqdn_ip4'][0] }}
@@ -276,8 +278,8 @@ etcd-2               Healthy   {"health":"true"}
 etcd-1               Healthy   {"health":"true"}   
 [root@linux-node1 ~]# kubectl get node
 NAME            STATUS    ROLES     AGE       VERSION
-192.168.56.12   Ready     <none>    1m        v1.10.3
-192.168.56.13   Ready     <none>    1m        v1.10.3
+192.168.60.89   Ready     <none>    1m        v1.10.3
+192.168.60.55   Ready     <none>    1m        v1.10.3
 ```
 ## 7.测试Kubernetes集群和Flannel网络
 
